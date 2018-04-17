@@ -1,16 +1,18 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 """
     usage:
          sudo python3 deer_detect.py label
 """
+from __future__ import absolute_import, division, print_function, unicode_literals
 
 import sys
 import datetime
 import time
 import os
 import numpy as np
+import cv2
 import pyaudio
-from thread import start_new_thread
+from threading import Thread
 import picamera
 
 
@@ -24,8 +26,8 @@ VIDEO_DIR = datetime.datetime.now().strftime("logs/video_%y%m%d_%H%M%S")
 os.mkdir(VIDEO_DIR)
 TIME_LIMIT = 10
 
-g_radarEnd = False
-g_irEnd = False
+g_radarEnd = True
+g_irEnd = True
 
 
 def waiting4finish():
@@ -40,14 +42,15 @@ def waiting4finish():
 def runRadar( startTime, endTime ):
     global g_radarEnd
     p = pyaudio.PyAudio()
-    stream = p.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK )
+    stream = p.open(format=FORMAT, channels=CHANNELS, rate=RATE, input_device_index=None, input=True, frames_per_buffer=CHUNK )
     print( "* recording radar data")
     frames = []
     tId = []
     radarLog = open( RADAR_LOG, "w" )
+    g_radarEnd = False
     while time.time() < endTime:
         try:
-            data = stream.read(CHUNK)
+            data = stream.read(CHUNK, exception_on_overflow = False)
         except:
             data = "0"
             print("no data")
@@ -76,11 +79,12 @@ def runRadar( startTime, endTime ):
 
 def runIR(startTime, endTime):
     global g_irEnd
-    fifo = open('/var/run/mlx9062x.sock', 'r')
+    fifo = open('/var/run/mlx9062x.sock', 'rb')#, encoding ='utf-8')
     time.sleep(0.1)
     irLog = open(IR_LOG, "w")
     irData = []
     tId = []
+    g_irEnd = True
     while time.time() < endTime:
         ir_raw = fifo.read()
         if len(ir_raw) < 128:
@@ -101,22 +105,50 @@ def runIR(startTime, endTime):
     g_irEnd = True
 
 
+def runCamera( startTime, endTime ):
+    try:
+        camera = picamera.PiCamera()
+        camera.resolution = (640,480)
+        #time.sleep(0.1)
+        camera.start_preview()
+        time.sleep(2)
+        while time.time() < endTime:
+            t = time.time() - startTime
+            t = int( round( t*1000, 3 ) ) #time in miliseconds
+            camera.capture(VIDEO_DIR+"/im%04d.png" %t, use_video_port=True)
+            
+        time.sleep(0.5)
+        camera.stop_preview()
+        time.sleep(1)
+        camera.close()
+        print('camera.close')
+        
+    except:
+        print('camera fall')
+        
+
+def runCamera2(startTime, endTime):
+    cap = cv2.VideoCapture(0)
+    cap.set(3, 320)
+    cap.set(4, 240)
+    while time.time() < endTime:
+        t = time.time() - startTime
+        t = int( round( t*1000, 3 ) )
+        ret, frame = cap.read()
+        cv2.imwrite(VIDEO_DIR+"/im%04d.png" %t, frame)
+        time.sleep(0.1)
+    cap.release()
+
+
 def deerDetect( ):
     startTime = time.time()
     endTime = startTime + TIME_LIMIT
-    start_new_thread( runRadar, ( startTime, endTime ) )
-    start_new_thread( runIR, ( startTime, endTime ) )
-    camera = picamera.PiCamera()
-    camera.resolution = (640,480)
-    camera.start_preview()
-    while time.time() < endTime:
-        t = time.time() - startTime
-        t = int( round( t*1000, 3 ) ) #time in miliseconds
-        camera.capture(VIDEO_DIR+"/im%04d.png" %t, resize = (160, 120), use_video_port=True)
-    time.sleep(0.5)
-    camera.stop_preview()
-    time.sleep(1)
-    camera.close()
+    Thread( target=runRadar, args=(startTime, endTime ) ).start()
+    Thread( target=runIR, args=(startTime, endTime ) ).start()
+    Thread( target=runCamera2, args=(startTime, endTime ) ).start()
+    
+    time.sleep(TIME_LIMIT + 3)
+    
     waiting4finish()
 
 
