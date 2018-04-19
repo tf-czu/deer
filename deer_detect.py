@@ -13,7 +13,7 @@ import numpy as np
 import cv2
 import pyaudio
 from threading import Thread
-import picamera
+#import picamera
 
 
 CHUNK = 800 #1024
@@ -28,6 +28,15 @@ TIME_LIMIT = 10
 
 g_radarEnd = True
 g_irEnd = True
+
+
+def findMax(y):
+    yd = np.diff(y)
+    ydd = np.diff(yd)
+    ex = yd[:-1] * yd[1:]
+    y_max = (ex<=0) & (ydd<=0)
+    
+    return y[1:-1][y_max], np.nonzero(y_max)[0] + 1
 
 
 def waiting4finish():
@@ -47,10 +56,42 @@ def runRadar( startTime, endTime ):
     frames = []
     tId = []
     radarLog = open( RADAR_LOG, "w" )
+    freq = np.fft.fftfreq(800, d= 1/RATE)
+    freq = freq[:50]
     g_radarEnd = False
     while time.time() < endTime:
         try:
             data = stream.read(CHUNK, exception_on_overflow = False)
+            data = np.fromstring( data, dtype=np.int16)
+            fft = np.abs( np.fft.rfft( data ) / data.size )[:50]
+            
+            am_max, args = findMax(fft)
+            arg_max = np.argmax(am_max)
+            
+            if len(am_max) > 0:
+                #sufficient frequency
+                freq_main = freq[ args[ arg_max ] ]
+                sufficient_freq = freq_main > 30 and freq_main < 300
+                
+                #sufficient amplitude
+                sufficient_am = am_max[ arg_max ] > 500
+                
+                #amplitudes relations
+                numMax = len(am_max)
+                if numMax == 1:
+                    amp_relations = True
+                else:
+                    numMax = min(numMax, 4)
+                    am_max_sort = np.sort(am_max)[::-1]
+                    ratio = am_max_sort[0] / np.sum(am_max_sort[1:numMax])
+                    amp_relations = ratio > 2
+                    
+                deer = sufficient_freq and sufficient_am and amp_relations
+                print("-----DEER-----")
+                
+            else:
+                deer = False
+            
         except:
             data = "0"
             print("no data")
@@ -62,7 +103,7 @@ def runRadar( startTime, endTime ):
     for ii, frame in enumerate( frames ):
         radarLog.write(str(tId[ii])+" ")
         if len(frame) > 1:
-            radarLog.write( str( list( np.fromstring( frame, dtype=np.int16) ) ) )
+            radarLog.write( str( list( frame ) ) )
         else:
             radarLog.write("[0]")
         radarLog.write( "\r\n" )
