@@ -87,10 +87,14 @@ def runRadar( startTime, endTime ):
                     amp_relations = ratio > 2
                     
                 deer = sufficient_freq and sufficient_am and amp_relations
-                print("-----DEER-----")
+                print(freq_main, am_max[ arg_max ], ratio)
+                print(sufficient_freq, sufficient_am, amp_relations)
                 
             else:
                 deer = False
+                
+            if deer:
+                print("-----DEER-----")
             
         except:
             data = "0"
