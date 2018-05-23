@@ -15,6 +15,8 @@ import numpy as np
 import cv2
 import pyaudio
 from threading import Thread
+import matplotlib
+matplotlib.use("Agg")
 from matplotlib import pyplot as plt
 #import picamera
 
@@ -25,7 +27,7 @@ CHANNELS = 1
 RATE = 4000 #44100 96000
 TIME_LIMIT = 10
 
-mser = cv2.MSER_create( _delta = 8, _min_area=3, _max_area=16)
+mser = cv2.MSER_create( _delta = 6, _min_area=3, _max_area=16)
 ZERO_IR = np.array([30230, 30112, 30205, 30244, 30145, 30206, 30160, 30400, 30081, 30203, 30124, 30325, 30198, 30335, 30325, 30260, 
            30318, 30182, 30250, 30327, 30231, 30263, 30298, 30300, 30356, 30376, 30342, 30315, 30346, 30334, 30238, 30500, 
            30381, 30511, 30363, 30413, 30353, 30356, 30435, 30439, 30343, 30295, 30468, 30411, 30541, 30542, 30401, 30656, 
@@ -261,6 +263,8 @@ def runIR(startTime, endTime ):
         # go all numpy on it
         ir = np.frombuffer(ir_last, np.uint16)
         deer = irProcessing(ir)
+        if deer:
+            print("----DEER----")
         irData.append(list(ir))
     
     fifo.close()
@@ -325,7 +329,7 @@ def evalLog(log):
     rDir = os.path.join(dirName, fileN.split(".")[0]+"_radar")
     if not os.path.isdir(rDir):
         os.mkdir(rDir)
-    """
+    
     rLog = open(rLogFile)
     timeR = []
     dataR = []
@@ -335,7 +339,6 @@ def evalLog(log):
         dataR.append( eval(data) )
     
     dataR = np.array(dataR)
-    #stft, freq, t_stft = getStft(np.reshape(dataR, -1))
         
     for ii, data in enumerate(dataR):
         print(ii)
@@ -344,7 +347,7 @@ def evalLog(log):
         argv_t_im = np.argmin( np.abs( t_im - t_r) )
         im = imList[argv_t_im]
         radarProcessing(data, timeId = ii, rDir = rDir, im = im)
-    """
+    
     print( "IR data")
     irF = open(irFile)
     time_ir = []
