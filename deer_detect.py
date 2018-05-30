@@ -68,8 +68,8 @@ def findMax(y):
 
 
 def radarProcessing(data, timeId = None, rDir = None, im = None):
-    freq = np.fft.fftfreq(800, d= 1/RATE)
-    print(len(freq))
+    freq = np.fft.fftfreq(CHUNK, d= 1/RATE)
+    #print(len(freq))
     freq = freq[:100]
     if timeId is not None:
         fig = plt.figure(figsize=(5,5))
@@ -98,8 +98,8 @@ def radarProcessing(data, timeId = None, rDir = None, im = None):
             amp_relations = ratio > 2
             
         deer = sufficient_freq and sufficient_am and amp_relations
-        print(freq_main, am_max[ arg_max ], ratio)
-        print(sufficient_freq, sufficient_am, amp_relations)
+        #print(freq_main, am_max[ arg_max ], ratio)
+        #print(sufficient_freq, sufficient_am, amp_relations)
         
     else:
         deer = False
@@ -143,7 +143,7 @@ def runRadar( startTime, endTime ):
             data = np.fromstring( data, dtype=np.int16)
             deer = radarProcessing(data)
             if deer:
-                print("-----DEER-----")
+                print("-----DEER_R-----")
                 g_deer_R = time.time()
         except:
             data = "0"
@@ -259,7 +259,7 @@ def runIR(startTime, endTime ):
         ir = np.frombuffer(ir_last, np.uint16)
         deer = irProcessing(ir)
         if deer:
-            print("----DEER----")
+            print("-----DEER_IR-----")
             g_deer_IR = time.time()
         irData.append(list(ir))
     
@@ -370,7 +370,7 @@ def evalLog(log):
 
 def deerDetect(  ):
     global g_radarEnd, g_irEnd, g_deer_R, g_deer_IR
-    deer_log = open(DEER_LOG, "w")
+    deer_log = open("logs/"+DEER_LOG, "w")
     startTime = time.time()
     endTime = startTime + TIME_LIMIT
     Thread( target=runRadar, args=(startTime, endTime ) ).start()
@@ -382,9 +382,8 @@ def deerDetect(  ):
         if g_deer_R and g_deer_IR:
             if abs(g_deer_R - g_deer_IR) < 0.2:
                 if time.time() - ( g_deer_R + g_deer_IR ) /2.0 < 0.2:
-                    print("---DEER---")
-                    deer_log.write(str( [g_deer_R, g_deer_IR] ) + "\r\n" )
-                    
+                    print("!!--------DEER--------!!")
+                    deer_log.write(str( [g_deer_R - startTime, g_deer_IR - startTime] ) + "\r\n" )
         
         if g_radarEnd and g_irEnd:
             break
