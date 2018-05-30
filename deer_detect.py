@@ -27,7 +27,7 @@ CHANNELS = 1
 RATE = 4000 #44100 96000
 TIME_LIMIT = 10
 
-mser = cv2.MSER_create( _delta = 6, _min_area=3, _max_area=16)
+mser = cv2.MSER_create( _delta = 5, _min_area=3, _max_area=16)
 ZERO_IR = np.array([30230, 30112, 30205, 30244, 30145, 30206, 30160, 30400, 30081, 30203, 30124, 30325, 30198, 30335, 30325, 30260, 
            30318, 30182, 30250, 30327, 30231, 30263, 30298, 30300, 30356, 30376, 30342, 30315, 30346, 30334, 30238, 30500, 
            30381, 30511, 30363, 30413, 30353, 30356, 30435, 30439, 30343, 30295, 30468, 30411, 30541, 30542, 30401, 30656, 
@@ -122,7 +122,7 @@ def radarProcessing(data, timeId = None, rDir = None, im = None):
         ax1.plot(freq[args], am_max, "ro")
         ax1.set_xlabel("Frequency (Hz)")
         ax1.set_ylabel("Amplitude (-)")
-        ax1.set_ylim(0,100)
+        ax1.set_ylim(0,3000)
         if deer:
             ax1.text(150, 2500, "Deer detected", fontsize = 20, color = "red")
         
@@ -197,16 +197,20 @@ def irProcessing(data, ii = None, irDir = None, im = None):
     #ir_frame_int = cv2.resize(ir_frame_int,(32, 8), interpolation = cv2.INTER_CUBIC)
     
     regions, bboxes = mser.detectRegions(ir_frame_int)
-    #print(ii, len(regions), regions, bboxes)
+    if ii is not None:
+        print(ii, len(regions), regions, bboxes)
     targets = []
     for region in regions:
         t_reg = np.mean(ir_frame2[ region[:,1], region[:,0] ] )
-        #print(mean_t, t_reg, t_reg - mean_t)
-        if t_reg - mean_t > 3:
+        if ii is not None:
+            print(mean_t, t_reg, t_reg - mean_t)
+        if t_reg - mean_t > 2.5:
             targets.append(region)
     #print(targets)
     if len(targets) > 0:
         deer = True
+    if deer:
+        print("----DEER----")
     
     if ii is not None:
         fig = plt.figure(figsize=(6,5))
