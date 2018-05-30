@@ -21,7 +21,7 @@ from matplotlib import pyplot as plt
 #import picamera
 
 
-CHUNK = 800 #1024
+CHUNK = 400 #800 #1024
 FORMAT = pyaudio.paInt16 #pyaudio.paInt16
 CHANNELS = 1
 RATE = 4000 #44100 96000
@@ -37,6 +37,8 @@ random_background = np.random.rand(6,18)*2 - 1
 
 g_radarEnd = True
 g_irEnd = True
+g_deer_R = None
+g_deer_IR = None
 
 
 def evaluateLog(notesFile):
@@ -63,15 +65,6 @@ def findMax(y):
     y_max = (ex<=0) & (ydd<=0)
     
     return y[1:-1][y_max], np.nonzero(y_max)[0] + 1
-
-
-def waiting4finish():
-    global g_radarEnd, g_irEnd
-    while True:
-        print( "waiting for finish radar, IR", g_radarEnd, g_irEnd)
-        if g_radarEnd and g_irEnd:
-            return True
-        time.sleep(1)
 
 
 def radarProcessing(data, timeId = None, rDir = None, im = None):
@@ -110,9 +103,6 @@ def radarProcessing(data, timeId = None, rDir = None, im = None):
         
     else:
         deer = False
-        
-    if deer:
-        print("-----DEER-----")
     
     if timeId is not None:
         ax1 =fig.add_subplot(211)
@@ -139,7 +129,7 @@ def radarProcessing(data, timeId = None, rDir = None, im = None):
 
 
 def runRadar( startTime, endTime ):
-    global g_radarEnd
+    global g_radarEnd, g_deer_R
     g_radarEnd = False
     p = pyaudio.PyAudio()
     stream = p.open(format=FORMAT, channels=CHANNELS, rate=RATE, input_device_index=None, input=True, frames_per_buffer=CHUNK )
@@ -152,6 +142,9 @@ def runRadar( startTime, endTime ):
             data = stream.read(CHUNK, exception_on_overflow = False)
             data = np.fromstring( data, dtype=np.int16)
             deer = radarProcessing(data)
+            if deer:
+                print("-----DEER-----")
+                g_deer_R = time.time()
         except:
             data = "0"
             print("no data")
@@ -209,9 +202,7 @@ def irProcessing(data, ii = None, irDir = None, im = None):
     #print(targets)
     if len(targets) > 0:
         deer = True
-    if deer:
-        print("----DEER----")
-    
+        
     if ii is not None:
         fig = plt.figure(figsize=(6,5))
         fig.subplots_adjust(left= 0.05, right=0.95, hspace=0.4, wspace = 0.22, top=0.95)
@@ -251,7 +242,7 @@ def irProcessing(data, ii = None, irDir = None, im = None):
 
 
 def runIR(startTime, endTime ):
-    global g_irEnd
+    global g_irEnd, g_deer_IR
     fifo = open('/var/run/mlx9062x.sock', 'rb')#, encoding ='utf-8')
     time.sleep(0.1)
     irLog = open("logs/"+IR_LOG, "w")
@@ -269,6 +260,7 @@ def runIR(startTime, endTime ):
         deer = irProcessing(ir)
         if deer:
             print("----DEER----")
+            g_deer_IR = time.time()
         irData.append(list(ir))
     
     fifo.close()
@@ -377,14 +369,27 @@ def evalLog(log):
 
 
 def deerDetect(  ):
+    global g_radarEnd, g_irEnd, g_deer_R, g_deer_IR
+    deer_log = open(DEER_LOG, "w")
     startTime = time.time()
     endTime = startTime + TIME_LIMIT
     Thread( target=runRadar, args=(startTime, endTime ) ).start()
     Thread( target=runIR, args=(startTime, endTime ) ).start()
     Thread( target=runCamera2, args=(startTime, endTime ) ).start()
     
-    time.sleep(TIME_LIMIT + 3)
-    waiting4finish()
+    time.sleep(1)
+    while True:
+        if g_deer_R and g_deer_IR:
+            if abs(g_deer_R - g_deer_IR) < 0.2:
+                if time.time() - ( g_deer_R + g_deer_IR ) /2.0 < 0.2:
+                    print("---DEER---")
+                    deer_log.write(str( [g_deer_R, g_deer_IR] ) + "\r\n" )
+                    
+        
+        if g_radarEnd and g_irEnd:
+            break
+        time.sleep(0.05)
+    deer_log.close()
     time.sleep(1)
 
 
@@ -404,11 +409,13 @@ if __name__ == "__main__":
         IR_LOG = datetime.datetime.now().strftime("ir_%y%m%d_%H%M%S") + ".log"
         VIDEO_DIR = datetime.datetime.now().strftime("video_%y%m%d_%H%M%S")
         os.mkdir("logs/"+VIDEO_DIR)
+        DEER_LOG = datetime.datetime.now().strftime("deer_%y%m%d_%H%M%S") + ".log"
         notes = open("logs/notes_"+label+".txt", "w")
         notes.write(label+"\r\n")
         notes.write("TIME_Limit %0d\r\n" %TIME_LIMIT)
         notes.write("RADAR_LOG "+RADAR_LOG+"\r\n")
         notes.write("IR_LOG "+IR_LOG+"\r\n")
         notes.write("VIDEO_DIR "+VIDEO_DIR+"\r\n")
+        notes.write("DEER_LOG "+DEER_LOG+"\r\n")
         notes.close()
         deerDetect()
