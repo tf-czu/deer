@@ -27,6 +27,8 @@ FORMAT = pyaudio.paInt16 #pyaudio.paInt16
 CHANNELS = 1
 RATE = 4000 #44100 96000
 TIME_LIMIT = 10
+T_DIFF = 3
+AREA_LIMIT = 4
 
 mser = cv2.MSER_create( _delta = 5, _min_area=3, _max_area=16)
 ZERO_IR = np.array([30230, 30112, 30205, 30244, 30145, 30206, 30160, 30400, 30081, 30203, 30124, 30325, 30198, 30335, 30325, 30260, 
@@ -186,16 +188,16 @@ def irProcessing(data, ii = None, irDir = None, im = None):
     ir_frame = np.reshape( data, (16,4) ).T/100 - 273.15
     ir_frame2 = ir_frame - ZERO_IR + ZERO_IR.mean()
     mean_t = np.mean(ir_frame2)
-    background = np.ones((6,18))*mean_t - random_background
-    background[1:5, 1:17] = ir_frame2
-    ir_frame2 = background
+    #background = np.ones((6,18))*mean_t - random_background
+    #background[1:5, 1:17] = ir_frame2
+    #ir_frame2 = background
     ir_frame_int =  ( ir_frame2 - t_min ) * 255 / ( t_max - t_min )
     ir_frame_int[ ir_frame_int < 0 ] = 0
     ir_frame_int[ ir_frame_int > 255 ] = 255
     ir_frame_int = ir_frame_int.astype(np.uint8)
+    ir_frame_int = cv2.resize(ir_frame_int,(32, 8), interpolation = cv2.INTER_CUBIC)
     
-    #ir_frame_int = cv2.resize(ir_frame_int,(32, 8), interpolation = cv2.INTER_CUBIC)
-    
+    """
     regions, bboxes = mser.detectRegions(ir_frame_int)
     if ii is not None:
         print(ii, len(regions), regions, bboxes)
@@ -209,8 +211,28 @@ def irProcessing(data, ii = None, irDir = None, im = None):
     #print(targets)
     if len(targets) > 0:
         deer = True
+    """
+    mode, ___ = stats.mode(np.round(ir_frame2), axis=None)
+    treshValue = int(( mode + T_DIFF - t_min ) * 255 / ( t_max - t_min ))
+    ret, binaryImg = cv2.threshold( ir_frame_int, treshValue, 255,cv2.THRESH_BINARY)
+    ___, contours, ___ = cv2.findContours(binaryImg,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+    
+    a_list = []
+    for cnt in contours:
+        area = cv2.contourArea(cnt)
+        a_list.append(area)
+        if area > AREA_LIMIT:
+            deer = True
         
+    print(a_list)
+    
     if ii is not None:
+        print(ii, mode)
+        plt.hist( ir_frame2.ravel(), 256,[0,256])
+        histName = os.path.join(irDir, "IRH_%05d" %ii)
+        plt.savefig(histName, dpi=100)
+        plt.close()
+        
         fig = plt.figure(figsize=(6,5))
         fig.subplots_adjust(left= 0.05, right=0.95, hspace=0.4, wspace = 0.22, top=0.95)
         ax1 = fig.add_subplot(411)
@@ -228,10 +250,10 @@ def irProcessing(data, ii = None, irDir = None, im = None):
         
         ax3 = fig.add_subplot(413)
         ir_frame_targets = ir_frame2.copy()
-        for targ in targets:
-            ir_frame_targets[ targ[:,1], targ[:,0] ] = 45
+        #for targ in targets:
+        #    ir_frame_targets[ targ[:,1], targ[:,0] ] = 45
             
-        irBox = ax3.pcolormesh(ir_frame_targets, vmin = t_min, vmax = 45 ) #cmap = 'Greys'
+        irBox = ax3.pcolormesh(binaryImg, vmin = t_min, vmax = 40 ) #cmap = 'Greys'
         ax3.axis("off")
         cb = fig.colorbar(irBox, ax=ax3)
         cb.ax.tick_params(labelsize=4)
@@ -322,9 +344,10 @@ def evalLog(log):
     imList = []
     t_im = []
     for imF in imList_FN:
-        if imF.split(".")[-1] == "png":
+        im_name, endswitch = imF.split(".")
+        if endswitch == "png":
             imList.append( cv2.imread( os.path.join(videoDir, imF) ) )
-            t_im.append( int(imF[2:9])/1000 )
+            t_im.append( int(im_name[2:])/1000 )
     t_im = np.array(t_im)
     
     print( "Radar data")
@@ -374,7 +397,9 @@ def evalLog(log):
         t_ir = time_ir[ii]
         argv_t_im = np.argmin( np.abs( t_im - t_ir) )
         im = imList[argv_t_im]
-        irProcessing(irD, ii = ii, irDir = irDir, im = im)
+        deer = irProcessing(irD, ii = ii, irDir = irDir, im = im)
+        if deer:
+            print(ii, "DEER")
 
 
 def deerDetect(  ):
