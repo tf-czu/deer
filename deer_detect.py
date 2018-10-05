@@ -18,6 +18,7 @@ from threading import Thread
 import matplotlib
 matplotlib.use("Agg")
 from matplotlib import pyplot as plt
+import scipy.stats as stats
 #import picamera
 
 
@@ -71,9 +72,6 @@ def radarProcessing(data, timeId = None, rDir = None, im = None):
     freq = np.fft.fftfreq(CHUNK, d= 1/RATE)
     #print(len(freq))
     freq = freq[:100]
-    if timeId is not None:
-        fig = plt.figure(figsize=(5,5))
-        fig.subplots_adjust(left = 0.15, bottom=0.15, hspace = 0.25)
     
     fft = np.abs( np.fft.rfft( data ) / data.size )[:100]
     am_max, args = findMax(fft)
@@ -82,11 +80,17 @@ def radarProcessing(data, timeId = None, rDir = None, im = None):
     if len(am_max) > 0:
         #sufficient frequency
         freq_main = freq[ args[ arg_max ] ]
-        sufficient_freq = freq_main > 30 and freq_main < 300
+        sufficient_freq = freq_main > 100 and freq_main < 300
         
         #sufficient amplitude
-        sufficient_am = am_max[ arg_max ] > 500
+        sufficient_am = am_max[ arg_max ] > 3000
         
+        """
+        #kurtosis
+        fft_section = fft[10:30] #frequencies 100 - 300 Hz
+        kurt = stats.kurtosis(fft_section)
+        amp_relations = kurt > 1
+        """
         #amplitudes relations
         numMax = len(am_max)
         if numMax == 1:
@@ -95,7 +99,7 @@ def radarProcessing(data, timeId = None, rDir = None, im = None):
             numMax = min(numMax, 4)
             am_max_sort = np.sort(am_max)[::-1]
             ratio = am_max_sort[0] / np.sum(am_max_sort[1:numMax])
-            amp_relations = ratio > 2
+            amp_relations = ratio > 0.5
             
         deer = sufficient_freq and sufficient_am and amp_relations
         #print(freq_main, am_max[ arg_max ], ratio)
@@ -104,7 +108,9 @@ def radarProcessing(data, timeId = None, rDir = None, im = None):
     else:
         deer = False
     
-    if timeId is not None:
+    if timeId is not None and deer:
+        fig = plt.figure(figsize=(5,5))
+        fig.subplots_adjust(left = 0.15, bottom=0.15, hspace = 0.25)
         ax1 =fig.add_subplot(211)
         #ax1.plot(freq[:50], fft, "k-")
         #ax1.plot(freq[:50][args], am_max, "ro")
@@ -112,16 +118,17 @@ def radarProcessing(data, timeId = None, rDir = None, im = None):
         ax1.plot(freq[args], am_max, "ro")
         ax1.set_xlabel("Frequency (Hz)")
         ax1.set_ylabel("Amplitude (-)")
-        ax1.set_ylim(0,3000)
+        ax1.set_ylim(0,5000)
         if deer:
-            ax1.text(150, 2500, "Deer detected", fontsize = 20, color = "red")
+            ax1.text(300, 4500, "Deer detected", fontsize = 14, color = "red")
+        #ax1.text(300, 4000, str(kurt), fontsize = 14, color = "red")
         
         if im is not None:
             ax2 = fig.add_subplot(212)
             ax2.imshow(im)
             ax2.axis("off")
         
-        figName = os.path.join(rDir, "fft_%03d" %timeId)
+        figName = os.path.join(rDir, "fft_%05d" %timeId)
         plt.savefig(figName, dpi = 100)
         plt.close()
     
@@ -234,7 +241,7 @@ def irProcessing(data, ii = None, irDir = None, im = None):
             ax4.imshow(im)
             ax4.axis("off")
         
-        figName = os.path.join(irDir, "IR_%03d" %ii)
+        figName = os.path.join(irDir, "IR_%05d" %ii)
         plt.savefig(figName, dpi=100)
         plt.close()
     
@@ -317,7 +324,7 @@ def evalLog(log):
     for imF in imList_FN:
         if imF.split(".")[-1] == "png":
             imList.append( cv2.imread( os.path.join(videoDir, imF) ) )
-            t_im.append( int(imF[2:6])/1000 )
+            t_im.append( int(imF[2:9])/1000 )
     t_im = np.array(t_im)
     
     print( "Radar data")
@@ -337,13 +344,15 @@ def evalLog(log):
     dataR = np.array(dataR)
         
     for ii, data in enumerate(dataR):
-        print(ii)
-        print("-----------")
+        #print(ii)
+        #print("-----------")
         t_r = timeR[ii]
         argv_t_im = np.argmin( np.abs( t_im - t_r) )
         im = imList[argv_t_im]
-        radarProcessing(data, timeId = ii, rDir = rDir, im = im)
-    
+        deer = radarProcessing(data, timeId = ii, rDir = rDir, im = im)
+        if deer:
+            print(ii, "DEER")
+    #sys.exit()
     print( "IR data")
     irF = open(irFile)
     time_ir = []
@@ -360,8 +369,8 @@ def evalLog(log):
         os.mkdir(irDir)
     
     for ii, irD in enumerate(irData):
-        print(ii)
-        print("-----------")
+        #print(ii)
+        #print("-----------")
         t_ir = time_ir[ii]
         argv_t_im = np.argmin( np.abs( t_im - t_ir) )
         im = imList[argv_t_im]
@@ -381,7 +390,7 @@ def deerDetect(  ):
     while True:
         if g_deer_R and g_deer_IR:
             if abs(g_deer_R - g_deer_IR) < 0.2:
-                if time.time() - ( g_deer_R + g_deer_IR ) /2.0 < 0.2:
+                if time.time() - ( g_deer_R + g_deer_IR )/2.0 < 0.2:
                     print("!!--------DEER--------!!")
                     deer_log.write(str( [g_deer_R - startTime, g_deer_IR - startTime] ) + "\r\n" )
         
