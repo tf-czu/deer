@@ -20,6 +20,7 @@ matplotlib.use("Agg")
 from matplotlib import pyplot as plt
 import scipy.stats as stats
 #import picamera
+import RPi.GPIO as GPIO
 
 
 CHUNK = 400 #800 #1024
@@ -42,6 +43,19 @@ g_radarEnd = True
 g_irEnd = True
 g_deer_R = None
 g_deer_IR = None
+
+GPIO.setmode(GPIO.BOARD)
+GPIO.setup(16, GPIO.OUT)
+GPIO.setup(20, GPIO.OUT)
+GPIO.setup(21, GPIO.OUT)
+
+
+def ledLight(pin, num = 3):
+    for ii in range(num):
+        GPIO.output( pin, True )
+        time.sleep( 0.2 )
+        GPIO.output( pin, False )
+        time.sleep( 0.2 )
 
 
 def evaluateLog(notesFile):
@@ -187,7 +201,7 @@ def irProcessing(data, ii = None, irDir = None, im = None):
     t_max = 40
     ir_frame = np.reshape( data, (16,4) ).T/100 - 273.15
     ir_frame2 = ir_frame - ZERO_IR + ZERO_IR.mean()
-    mean_t = np.mean(ir_frame2)
+    #mean_t = np.mean(ir_frame2)
     #background = np.ones((6,18))*mean_t - random_background
     #background[1:5, 1:17] = ir_frame2
     #ir_frame2 = background
@@ -217,14 +231,11 @@ def irProcessing(data, ii = None, irDir = None, im = None):
     ret, binaryImg = cv2.threshold( ir_frame_int, treshValue, 255,cv2.THRESH_BINARY)
     ___, contours, ___ = cv2.findContours(binaryImg,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
     
-    a_list = []
     for cnt in contours:
         area = cv2.contourArea(cnt)
-        a_list.append(area)
         if area > AREA_LIMIT:
             deer = True
         
-    print(a_list)
     
     if ii is not None:
         print(ii, mode)
@@ -451,4 +462,7 @@ if __name__ == "__main__":
         notes.write("VIDEO_DIR "+VIDEO_DIR+"\r\n")
         notes.write("DEER_LOG "+DEER_LOG+"\r\n")
         notes.close()
+        ledLight(16)
+        ledLight(20)
+        ledLight(21)
         deerDetect()
