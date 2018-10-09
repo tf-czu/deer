@@ -18,7 +18,6 @@ from threading import Thread
 import matplotlib
 matplotlib.use("Agg")
 from matplotlib import pyplot as plt
-import scipy.stats as stats
 #import picamera
 import RPi.GPIO as GPIO
 
@@ -44,7 +43,7 @@ g_irEnd = True
 g_deer_R = None
 g_deer_IR = None
 
-GPIO.setmode(GPIO.BOARD)
+GPIO.setmode(GPIO.BCM)
 GPIO.setup(16, GPIO.OUT)
 GPIO.setup(20, GPIO.OUT)
 GPIO.setup(21, GPIO.OUT)
@@ -53,9 +52,9 @@ GPIO.setup(21, GPIO.OUT)
 def ledLight(pin, num = 3):
     for ii in range(num):
         GPIO.output( pin, True )
-        time.sleep( 0.2 )
+        time.sleep( 0.1 )
         GPIO.output( pin, False )
-        time.sleep( 0.2 )
+        time.sleep( 0.1 )
 
 
 def evaluateLog(notesFile):
@@ -168,6 +167,7 @@ def runRadar( startTime, endTime ):
             if deer:
                 print("-----DEER_R-----")
                 g_deer_R = time.time()
+                Thread( target=ledLight, args=(16, 2) ).start()
         except:
             data = "0"
             print("no data")
@@ -226,7 +226,10 @@ def irProcessing(data, ii = None, irDir = None, im = None):
     if len(targets) > 0:
         deer = True
     """
-    mode, ___ = stats.mode(np.round(ir_frame2), axis=None)
+    
+    modals, counts = np.unique(np.round(ir_frame2), return_counts=True)
+    mode_index = np.argmax(counts)
+    mode = modals[mode_index]
     treshValue = int(( mode + T_DIFF - t_min ) * 255 / ( t_max - t_min ))
     ret, binaryImg = cv2.threshold( ir_frame_int, treshValue, 255,cv2.THRESH_BINARY)
     ___, contours, ___ = cv2.findContours(binaryImg,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
@@ -283,7 +286,13 @@ def irProcessing(data, ii = None, irDir = None, im = None):
 
 def runIR(startTime, endTime ):
     global g_irEnd, g_deer_IR
-    fifo = open('/var/run/mlx9062x.sock', 'rb')#, encoding ='utf-8')
+    try:
+        fifo = open('/var/run/mlx9062x.sock', 'rb')#, encoding ='utf-8')
+    except IOError as e:
+        print(e)
+        print("IR is not working!")
+        sys.exit(2)
+        
     time.sleep(0.1)
     irLog = open("logs/"+IR_LOG, "w")
     irData = []
@@ -301,6 +310,7 @@ def runIR(startTime, endTime ):
         if deer:
             print("-----DEER_IR-----")
             g_deer_IR = time.time()
+            Thread( target=ledLight, args=(20, 2) ).start()
         irData.append(list(ir))
     
     fifo.close()
@@ -428,6 +438,7 @@ def deerDetect(  ):
             if abs(g_deer_R - g_deer_IR) < 0.2:
                 if time.time() - ( g_deer_R + g_deer_IR )/2.0 < 0.2:
                     print("!!--------DEER--------!!")
+                    Thread( target=ledLight, args=(21, 2) ).start()
                     deer_log.write(str( [g_deer_R - startTime, g_deer_IR - startTime] ) + "\r\n" )
         
         if g_radarEnd and g_irEnd:
@@ -466,3 +477,4 @@ if __name__ == "__main__":
         ledLight(20)
         ledLight(21)
         deerDetect()
+        GPIO.cleanup()
