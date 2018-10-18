@@ -19,7 +19,14 @@ import matplotlib
 matplotlib.use("Agg")
 from matplotlib import pyplot as plt
 #import picamera
-import RPi.GPIO as GPIO
+
+
+try:
+    import RPi.GPIO as GPIO
+    gpio_available = True
+except:
+    print( "GPIO is not available")
+    gpio_available = False
 
 
 CHUNK = 400 #800 #1024
@@ -30,12 +37,12 @@ TIME_LIMIT = 10
 T_DIFF = 3
 AREA_LIMIT = 4
 
-mser = cv2.MSER_create( _delta = 5, _min_area=3, _max_area=16)
+#mser = cv2.MSER_create( _delta = 5, _min_area=3, _max_area=16)
 ZERO_IR = np.array([30230, 30112, 30205, 30244, 30145, 30206, 30160, 30400, 30081, 30203, 30124, 30325, 30198, 30335, 30325, 30260, 
            30318, 30182, 30250, 30327, 30231, 30263, 30298, 30300, 30356, 30376, 30342, 30315, 30346, 30334, 30238, 30500, 
            30381, 30511, 30363, 30413, 30353, 30356, 30435, 30439, 30343, 30295, 30468, 30411, 30541, 30542, 30401, 30656, 
            30541, 30567, 30440, 30656, 30544, 30503, 30448, 30778, 30821, 30605, 30648, 30727, 30466, 30751, 30537, 30631])
-ZERO_IR = np.reshape( ZERO_IR, (16,4) ).T/100 - 273.15
+ZERO_IR = np.reshape( ZERO_IR, (16,4) )[::-1,::-1].T/100 - 273.15
 random_background = np.random.rand(6,18)*2 - 1
 
 g_radarEnd = True
@@ -43,13 +50,16 @@ g_irEnd = True
 g_deer_R = None
 g_deer_IR = None
 
-GPIO.setmode(GPIO.BCM)
-GPIO.setup(16, GPIO.OUT)
-GPIO.setup(20, GPIO.OUT)
-GPIO.setup(21, GPIO.OUT)
+if gpio_available:
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setup(16, GPIO.OUT)
+    GPIO.setup(20, GPIO.OUT)
+    GPIO.setup(21, GPIO.OUT)
 
 
 def ledLight(pin, num = 3):
+    if gpio_available:
+        return None
     for ii in range(num):
         GPIO.output( pin, True )
         time.sleep( 0.1 )
@@ -123,7 +133,7 @@ def radarProcessing(data, timeId = None, rDir = None, im = None):
     else:
         deer = False
     
-    if timeId is not None and deer:
+    if timeId is not None:# and deer:
         fig = plt.figure(figsize=(5,5))
         fig.subplots_adjust(left = 0.15, bottom=0.15, hspace = 0.25)
         ax1 =fig.add_subplot(211)
@@ -198,8 +208,8 @@ def runRadar( startTime, endTime ):
 def irProcessing(data, ii = None, irDir = None, im = None):
     deer = False
     t_min = 10
-    t_max = 40
-    ir_frame = np.reshape( data, (16,4) ).T/100 - 273.15
+    t_max = 50
+    ir_frame = np.reshape( data, (16,4) )[::-1, ::-1].T/100 - 273.15
     ir_frame2 = ir_frame - ZERO_IR + ZERO_IR.mean()
     #mean_t = np.mean(ir_frame2)
     #background = np.ones((6,18))*mean_t - random_background
@@ -240,9 +250,9 @@ def irProcessing(data, ii = None, irDir = None, im = None):
             deer = True
         
     
-    if ii is not None:
-        print(ii, mode)
-        plt.hist( ir_frame2.ravel(), 256,[0,256])
+    if ii is not None:# and deer:
+        #print(ii, mode)
+        plt.hist( ir_frame2.ravel(), t_max-t_min,[t_min,t_max])
         histName = os.path.join(irDir, "IRH_%05d" %ii)
         plt.savefig(histName, dpi=100)
         plt.close()
@@ -250,7 +260,7 @@ def irProcessing(data, ii = None, irDir = None, im = None):
         fig = plt.figure(figsize=(6,5))
         fig.subplots_adjust(left= 0.05, right=0.95, hspace=0.4, wspace = 0.22, top=0.95)
         ax1 = fig.add_subplot(411)
-        irBox = ax1.pcolormesh(ir_frame, vmin = t_min, vmax = t_max ) #cmap = 'Greys'
+        irBox = ax1.pcolormesh(ir_frame2, vmin = t_min, vmax = t_max ) #cmap = 'Greys'
         ax1.axis("off")
         cb = fig.colorbar(irBox, ax=ax1)
         cb.ax.tick_params(labelsize=4)
@@ -263,7 +273,7 @@ def irProcessing(data, ii = None, irDir = None, im = None):
         cb.ax.tick_params(labelsize=4)
         
         ax3 = fig.add_subplot(413)
-        ir_frame_targets = ir_frame2.copy()
+        #ir_frame_targets = ir_frame2.copy()
         #for targ in targets:
         #    ir_frame_targets[ targ[:,1], targ[:,0] ] = 45
             
@@ -333,7 +343,7 @@ def runCamera( startTime, endTime):
         while time.time() < endTime:
             t = time.time() - startTime
             t = int( round( t*1000, 3 ) ) #time in miliseconds
-            camera.capture("logs/"+VIDEO_DIR+"/im%04d.png" %t, use_video_port=True)
+            camera.capture("logs/"+VIDEO_DIR+"/im%06d.png" %t, use_video_port=True)
             
         time.sleep(0.5)
         camera.stop_preview()
@@ -353,12 +363,13 @@ def runCamera2(startTime, endTime):
         t = time.time() - startTime
         t = int( round( t*1000, 3 ) )
         ret, frame = cap.read()
-        cv2.imwrite("logs/"+VIDEO_DIR+"/im%04d.png" %t, frame)
+        cv2.imwrite("logs/"+VIDEO_DIR+"/im%06d.png" %t, frame)
         time.sleep(0.1)
     cap.release()
 
 
 def evalLog(log):
+    deer = None
     rLogFile, irFile, videoDir = evaluateLog(log)
     
     imList_FN = sorted( os.listdir( videoDir ) )
@@ -477,4 +488,5 @@ if __name__ == "__main__":
         ledLight(20)
         ledLight(21)
         deerDetect()
-        GPIO.cleanup()
+        if gpio_available:
+            GPIO.cleanup()
