@@ -58,7 +58,7 @@ if gpio_available:
 
 
 def ledLight(pin, num = 3):
-    if gpio_available:
+    if not gpio_available:
         return None
     for ii in range(num):
         GPIO.output( pin, True )
@@ -181,6 +181,7 @@ def runRadar( startTime, endTime ):
         except:
             data = "0"
             print("no data")
+            time.sleep(0.1)
         tId.append(time.time() - startTime)
         frames.append(data)
         #continue
@@ -469,7 +470,7 @@ if __name__ == "__main__":
         evalLog(log = sys.argv[2] )
     else:
         if len(sys.argv) > 2:
-            TIME_LIMIT = int(sys.argv[2])
+            TIME_LIMIT = float(sys.argv[2])
             print( "New TIME LIMIT ", TIME_LIMIT)
         RADAR_LOG = datetime.datetime.now().strftime("radar_%y%m%d_%H%M%S") + ".log"
         IR_LOG = datetime.datetime.now().strftime("ir_%y%m%d_%H%M%S") + ".log"
